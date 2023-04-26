@@ -1,0 +1,791 @@
+Project
+
+
+We need to integrate Github with jenkins, jenkins-server with Ansible-server
+and ansible-server with web-server.
+
+Then developer will write source code and commit and then push to github.
+When pushed to Github, Jenkins will start the job-compiling and building and jenkins
+will transfer file to ansible server. When ansible server receives files, jenkins
+will trigger playbook mentioned in ansible server. Playbook mentions to deploy
+the software on web server. In future, any changes done by developer and pushed
+to Github, job will start running again and new version of software will be deployed.
+
+We need 4 servers, Github server is provided by github, so we need to create
+ansible,jenkins and web server ie 3 ec2 instances.
+
+First install Jenkins server, pre requisite is java
+
+[root@ip-172-31-38-139 ~]# yum install java* -y
+...
+Complete!
+
+
+    2  sudo wget -O /etc/yum.repos.d/jenkins.repo     https://pkg.jenkins.io/redhat-stable/jenkins.repo
+    3  sudo rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+    4  sudo yum upgrade
+    5  sudo yum install java-11-openjdk
+    6  sudo yum install jenkins
+    7  ping localhost
+    8  sudo systemctl enable jenkins
+    9  sudo systemctl start jenkins
+   10  sudo systemctl status jenkins
+   11  history
+[root@ip-172-31-38-139 ~]#
+
+Now open browser for jenkins UI http://3.6.86.129:8080/  publicIP:8080
+
+[root@ip-172-31-38-139 ~]# cat /var/lib/jenkins/secrets/initialAdminPassword
+
+e6fabd7130e44853bf985970fd55c61f
+
+
+
+Now setup ansible server
+
+[root@ip-172-31-32-176 ~]# sudo amazon-linux-extras install ansible2
+
+Now you have to put entry in inventory file by creating group called web
+
+[root@ip-172-31-32-176 ~]# cat /etc/ansible/hosts
+[web]
+172.31.34.82    #private IP of this web server node
+
+
+
+Now on web-server node, install apache package
+
+
+    2  yum install httpd -y
+    3  systemctl start httpd -y
+    4  systemctl start httpd
+    5  systemctl enable httpd
+    6  cd /var/www/html/
+    7  history
+
+
+Now again switch to Ansible server and make passwordless connection with webserver
+
+First create key and then share it to web-server using it's private ip address
+
+
+[root@ip-172-31-32-176 ~]# ssh-keygen
+Generating public/private rsa key pair.
+Enter file in which to save the key (/root/.ssh/id_rsa):
+Enter passphrase (empty for no passphrase):
+Enter same passphrase again:
+Your identification has been saved in /root/.ssh/id_rsa.
+Your public key has been saved in /root/.ssh/id_rsa.pub.
+The key fingerprint is:
+SHA256:STf980FBu0c655t6gvH/uO2A0ckJJQoOfAdQhtXu+5I root@ip-172-31-32-176.ap-south-1.compute.internal
+The key's randomart image is:
++---[RSA 2048]----+
+|     .o=*o  . oo |
+|      o+..oo o  o|
+|       .oo+ o  o.|
+|       . o.. =.=.|
+|        S.  . Xoo|
+|          .. o *o|
+|           o= . o|
+|          E. o =o|
+|           o..B*=|
++----[SHA256]-----+
+
+[root@ip-172-31-32-176 ~]# ssh-copy-id root@172.31.34.82
+/usr/bin/ssh-copy-id: INFO: Source of key(s) to be installed: "/root/.ssh/id_rsa.pub"
+The authenticity of host '172.31.34.82 (172.31.34.82)' can't be established.
+ECDSA key fingerprint is SHA256:Vht+rLD9ClNGdLUYTz+6gnQsg0aTiZ4MBqf0clWAXbc.
+ECDSA key fingerprint is MD5:70:7a:f5:bb:ac:7e:91:14:fe:b9:3d:13:31:71:ed:0e.
+Are you sure you want to continue connecting (yes/no)? yes
+/usr/bin/ssh-copy-id: INFO: attempting to log in with the new key(s), to filter out any that are already installed
+/usr/bin/ssh-copy-id: INFO: 1 key(s) remain to be installed -- if you are prompted now it is to install the new keys
+Permission denied (publickey,gssapi-keyex,gssapi-with-mic).
+[root@ip-172-31-32-176 ~]#
+
+Got permission denied error as we have no root permission in
+web-server
+
+
+First set root password in webserver
+
+[root@ip-172-31-34-82 html]# passwd root
+Changing password for user root.
+New password:
+BAD PASSWORD: The password fails the dictionary check - it is based on a dictionary word
+Retype new password:
+passwd: all authentication tokens updated successfully.
+[root@ip-172-31-34-82 html]#
+
+
+Then enable root login.
+
+[root@ip-172-31-34-82 html]# cat /etc/ssh/sshd_config
+PermitRootLogin yes
+PasswordAuthentication yes
+
+[root@ip-172-31-34-82 ~]# systemctl restart sshd
+[root@ip-172-31-34-82 ~]#
+[root@ip-172-31-34-82 ~]# systemctl status sshd
+● sshd.service - OpenSSH server daemon
+   Loaded: loaded (/usr/lib/systemd/system/sshd.service; enabled; vendor preset: enabled)
+   Active: active (running) since Tue 2023-04-25 22:30:52 UTC; 7s ago
+     Docs: man:sshd(8)
+           man:sshd_config(5)
+ Main PID: 32686 (sshd)
+   CGroup: /system.slice/sshd.service
+           └─32686 /usr/sbin/sshd -D
+
+Apr 25 22:30:52 ip-172-31-34-82.ap-south-1.compute.internal systemd[1]: Stopp...
+Apr 25 22:30:52 ip-172-31-34-82.ap-south-1.compute.internal systemd[1]: Stopp...
+Apr 25 22:30:52 ip-172-31-34-82.ap-south-1.compute.internal systemd[1]: Start...
+Apr 25 22:30:52 ip-172-31-34-82.ap-south-1.compute.internal sshd[32686]: Serv...
+Apr 25 22:30:52 ip-172-31-34-82.ap-south-1.compute.internal sshd[32686]: Serv...
+Apr 25 22:30:52 ip-172-31-34-82.ap-south-1.compute.internal systemd[1]: Start...
+Hint: Some lines were ellipsized, use -l to show in full.
+[root@ip-172-31-34-82 ~]#
+
+
+
+
+Now again switch to Ansible server and share keys for passwordless acess.
+
+[root@ip-172-31-32-176 ~]# ssh-copy-id root@172.31.34.82
+/usr/bin/ssh-copy-id: INFO: Source of key(s) to be installed: "/root/.ssh/id_rsa.pub"
+/usr/bin/ssh-copy-id: INFO: attempting to log in with the new key(s), to filter out any that are already installed
+/usr/bin/ssh-copy-id: INFO: 1 key(s) remain to be installed -- if you are prompted now it is to install the new keys
+root@172.31.34.82's password:
+
+Number of key(s) added: 1
+
+Now try logging into the machine, with:   "ssh 'root@172.31.34.82'"
+and check to make sure that only the key(s) you wanted were added.
+
+[root@ip-172-31-32-176 ~]#
+
+
+Now try ssh from ansible to webserver
+
+[root@ip-172-31-32-176 ~]# ssh 172.31.34.82
+Last login: Tue Apr 25 22:30:43 2023
+
+       __|  __|_  )
+       _|  (     /   Amazon Linux 2 AMI
+      ___|\___|___|
+
+https://aws.amazon.com/amazon-linux-2/
+[root@ip-172-31-34-82 ~]#
+
+-------------------------
+
+Now we need to make same ansible connection with jenkins
+
+
+
+[root@ip-172-31-38-139 ~]# ssh-keygen
+Generating public/private rsa key pair.
+Enter file in which to save the key (/root/.ssh/id_rsa):
+Enter passphrase (empty for no passphrase):
+Enter same passphrase again:
+Your identification has been saved in /root/.ssh/id_rsa
+Your public key has been saved in /root/.ssh/id_rsa.pub
+The key fingerprint is:
+SHA256:sDdi3NygrMcMQiUYfHr3eXKRAbKZcvgOW8lpuyQzpUA root@ip-172-31-38-139.ap-south-1.compute.internal
+The key's randomart image is:
++---[RSA 3072]----+
+|oo. .. ..        |
+|.. +. =  .       |
+| E+o =. . o      |
+|.o .=+o* =       |
+| .o.oOO S o      |
+|  ..O*.* +       |
+|   *.++ +        |
+|    =..          |
+|     .           |
++----[SHA256]-----+
+[root@ip-172-31-38-139 ~]#
+[root@ip-172-31-38-139 ~]#  ssh-copy-id -i root@172.31.32.176
+
+/usr/bin/ssh-copy-id: ERROR: failed to open ID file 'root@172.31.32.176.pub': No such file or directory
+
+
+
+[root@ip-172-31-32-176 ~]# passwd root
+Changing password for user root.
+New password:
+Retype new password:
+Sorry, passwords do not match.
+New password:
+BAD PASSWORD: The password fails the dictionary check - it is based on a dictionary word
+Retype new password:
+passwd: all authentication tokens updated successfully.
+[root@ip-172-31-32-176 ~]#
+
+
+
+Now again try exchanging key and verify passwordless access between
+Jenkins-server---->Ansible-server
+
+[root@ip-172-31-38-139 ~]#  ssh-copy-id  root@172.31.32.176
+/usr/bin/ssh-copy-id: INFO: Source of key(s) to be installed: "/root/.ssh/id_rsa.pub"
+The authenticity of host '172.31.32.176 (172.31.32.176)' can't be established.
+ED25519 key fingerprint is SHA256:SEDMmFIOqVc+1NEyYGbPBFBXCBOfznZzyHda+EwTQsM.
+This key is not known by any other names
+Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
+/usr/bin/ssh-copy-id: INFO: attempting to log in with the new key(s), to filter out any that are already installed
+/usr/bin/ssh-copy-id: INFO: 1 key(s) remain to be installed -- if you are prompted now it is to install the new keys
+root@172.31.32.176's password:
+
+Number of key(s) added: 1
+
+Now try logging into the machine, with:   "ssh 'root@172.31.32.176'"
+and check to make sure that only the key(s) you wanted were added.
+
+[root@ip-172-31-38-139 ~]# ssh 'root@172.31.32.176'
+Last login: Tue Apr 25 22:29:50 2023
+
+       __|  __|_  )
+       _|  (     /   Amazon Linux 2 AMI
+      ___|\___|___|
+
+https://aws.amazon.com/amazon-linux-2/
+[root@ip-172-31-32-176 ~]#
+
+
+
+Now create playbook in Ansible
+
+[root@ip-172-31-32-176 ~]# cat /sourcecode/playbook.yml
+- hosts: all
+  tasks:
+    - copy:
+        src: /opt/index.html   #inside opt folder we have index.html which will be created after jenkins compilation it will send it to ansible server /opt folder
+        dest: /var/www/html/
+
+
+[root@ip-172-31-32-176 sourcecode]#
+
+
+Now create a Github Repository and index.html file inside it.
+
+Project-8-Jenkins_Ansible_Project/index.html
+
+index.html
+1 lines (1 sloc)  17 Bytes
+Welcome to India
+
+Now integrate Jenkins to github.
+
+Github UI Project repo --->Settings---->Webhook--->Add webhook
+
+
+Webhooks / Add webhook
+We’ll send a POST request to the URL below with details of any subscribed events. You can also specify which data format you’d like to receive (JSON, x-www-form-urlencoded, etc). More information can be found in our developer documentation.
+
+Payload URL
+http://3.6.86.129:8080/github-webhook/           #This is jenkins UI IP/publicIP
+
+Content type
+application/json
+
+#Go to Jenkins UI and click on Users-->Configure-->Generate API token--->copy and paste it in Github Webhook secret configuration
+Secret
+1147b778e4d756a053236f5a0955040a17
+
+Which events would you like to trigger this webhook?
+Just the push event.
+
+Active
+
+
+Now webhook is created.
+
+Now, we have to install a plugin called Publish Over SSH plugin because when compiling
+is done on jenkins server, the output will be transferred to ansible server through
+ssh connection. Also Jenkins server communication to trigger playbook in ansible
+server also uses ssh connection.
+
+Publish Over SSH-->Install and restart jenkins
+
+--------------------------
+Now create a Job
+
+Freestyle Project--->enter
+
+Also install git package in jenkins server else you will git error while configuring
+github link in Jenkins Job(ie failed to connect to repository...)
+
+
+
+[root@ip-172-31-38-139 ~]# yum install git -y
+
+
+Source Code Management
+None
+Git
+?
+Repositories
+?
+Repository URL
+?
+https://github.com/prannoy10/Project-8-Jenkins_Ansible_Project.git
+
+After github repo link configured, select GitHub hook trigger for GITScm polling as build
+trigger as it's job needs to run when developer push code to github
+
+Build Triggers
+GitHub hook trigger for GITScm polling
+?
+
+
+Send files or execute commands over SSH before the build star
+When after job run and output should be in jenkins server and it should
+be transferred to ansible server. So mention rsync command that needs
+to be run in jenkins server. So configure rsync command and jenkins
+server login id/password. Before doing Job configuration, do the below
+
+enable rootpermitlogin in jenkins server.
+
+Go to Manage Jenkins--->Configure system-->Publish over ssh
+
+SSH Servers
+SSH Server
+Name
+?
+jenkins
+Hostname
+?
+172.31.38.139
+Username
+?
+root
+Remote Directory
+?
+Advanced
+Edited
+
+Use password authentication, or use a different key
+?
+Passphrase / Password
+?
+•••••••••
+Path to key
+?
+
+click on apply
+
+
+Now again switch to job configuration
+
+Now configure in build steps, you need to run command ie rsync in jenkins server, when compiling
+and build is done, the data which is present in Jenkinsserver, it will transfer
+to ansible server, then ansible-server will be able to deploy.
+
+Jenkins data is stored in /var/lib/jenkins/workspace folder.
+Inside workspace folder, you will have jobname demo-project folder which
+include the output file. This workspace folder will be created after job
+is run successfully.
+
+[ec2-user@ip-172-31-38-139 ~]$ cd /var/lib/jenkins/
+
+[ec2-user@ip-172-31-38-139 jenkins]$ cd workspace
+-bash: cd: workspace: No such file or directory
+
+
+Now build the job
+
+Started by GitHub push by prannoy10
+Running as SYSTEM
+Building in workspace /var/lib/jenkins/workspace/demo-project
+The recommended git tool is: NONE
+No credentials specified
+ > git rev-parse --resolve-git-dir /var/lib/jenkins/workspace/demo-project/.git # timeout=10
+Fetching changes from the remote Git repository
+ > git config remote.origin.url https://github.com/prannoy10/Project-8-Jenkins_Ansible_Project.git # timeout=10
+Fetching upstream changes from https://github.com/prannoy10/Project-8-Jenkins_Ansible_Project.git
+ > git --version # timeout=10
+ > git --version # 'git version 2.39.2'
+ > git fetch --tags --force --progress -- https://github.com/prannoy10/Project-8-Jenkins_Ansible_Project.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+ > git rev-parse refs/remotes/origin/master^{commit} # timeout=10
+Checking out Revision 883f7aa09a5deb82b97afd885c1d359c07710ab7 (refs/remotes/origin/master)
+ > git config core.sparsecheckout # timeout=10
+ > git checkout -f 883f7aa09a5deb82b97afd885c1d359c07710ab7 # timeout=10
+Commit message: "Delete README.md"
+First time build. Skipping changelog.
+Finished: SUCCESS
+
+
+Now the workspace folder is created and the github file is also pushed to the jenkins server
+
+
+[root@ip-172-31-38-139 ~]# cd /var/lib/jenkins/
+[root@ip-172-31-38-139 jenkins]# cd workspace/
+[root@ip-172-31-38-139 workspace]# ls -lrth
+total 0
+drwxr-xr-x. 3 jenkins jenkins 36 Apr 26 21:54 demo-project
+[root@ip-172-31-38-139 workspace]#
+
+[root@ip-172-31-38-139 demo-project]# ls
+index.html
+[root@ip-172-31-38-139 demo-project]# cat index.html
+Welcome to India
+
+Now re-configure job again and add build steps
+
+rsync -avh /var/lib/jenkins/workspace/demo-project/*.html root@172.31.32.176:/opt/index.html
+
+Above command means copy any html file in jenkins server to ansible server
+and it will store in /opt folder because In the ansible playbook we mentioned 
+the src as /opt/index.html . 
+
+Build Steps
+Send files or execute commands over SSH
+?
+
+SSH Publishers
+SSH Server
+Name
+?
+
+jenkins
+Advanced
+Transfers
+Transfer Set
+Source files
+?
+Remove prefix
+?
+Remote directory
+?
+Exec command
+?
+rsync -avh /var/lib/jenkins/workspace/demo-project/*.html root@172.31.32.176:/opt/index.html
+
+
+
+Now again run(build now) the job, the file will be transferred from jenkins
+server to ansible server /opt directory.
+
+Now switch to ansible server and verify whether index.html file is present
+in /opt folder.
+
+[root@ip-172-31-38-139 ~]# ssh 52.66.124.24
+Last login: Wed Apr 26 22:06:33 2023 from 3.6.86.129
+
+       __|  __|_  )
+       _|  (     /   Amazon Linux 2 AMI
+      ___|\___|___|
+
+https://aws.amazon.com/amazon-linux-2/
+[root@ip-172-31-32-176 ~]#
+[root@ip-172-31-32-176 ~]# cd /opt
+[root@ip-172-31-32-176 opt]# ls
+aws  index.html  rh
+[root@ip-172-31-32-176 opt]#
+
+
+
+------------------------
+Now you need to re-configure job and add post-build actions steps for deploying
+the code in web-server. You need to trigger below playbook present in ansible-server
+
+[root@ip-172-31-32-176 ~]# cat /sourcecode/playbook.yml
+- hosts: all
+  tasks:
+    - copy:
+        src: /opt/index.html   #inside opt folder we have index.html which will be created after jenkins compilation it will send it to ansible server /opt folder
+        dest: /var/www/html/
+
+
+Currently on Jenkins-server ssh configuration is done, we need to do ssh configuration
+for ansible server as well.
+
+Manage Jenkins---->Configure systems
+
+SSH Servers
+SSH Server
+Name
+?
+jenkins
+Hostname
+?
+172.31.38.139
+Username
+?
+root
+Remote Directory
+?
+Advanced
+Add
+
+Click on Add, add details for Ansible to ssh as well
+
+
+SSH Server
+Name
+?
+Ansible
+Hostname
+?
+172.31.32.176
+Username
+?
+root
+Remote Directory
+?
+Advanced
+Edited
+
+Use password authentication, or use a different key
+?
+Passphrase / Password
+?
+•••••••••
+Path to key
+?
+Key
+?
+Jump host
+?
+Port
+?
+22
+
+Apply and save
+
+
+
+
+
+[root@ip-172-31-32-176 ~]# cat /sourcecode/playbook.yml
+- hosts: all              
+  tasks:
+    - copy:
+        src: /opt/index.html   #inside opt folder we have index.html which will be created after jenkins compilation it will send it to ansible server /opt folder
+        dest: /var/www/html/
+
+#The above playbook file is present in ansible-server but it will be only applied
+to it's configured ansible hosts ie web-server
+
+
+Now again go to job and configure.
+
+
+
+Post-build Actions
+Send build artifacts over SSH
+?
+
+SSH Publishers
+SSH Server
+Name
+?
+
+Ansible
+Advanced
+Transfers
+Transfer Set
+Source files
+?
+Either Source files, Exec command or both must be supplied
+Remove prefix
+?
+Remote directory
+?
+Exec command
+?
+ansible-playbook /sourcecode/playbook.yml
+
+
+Click on apply and save
+
+Run the job again,
+
+Started by user admin
+Running as SYSTEM
+Building in workspace /var/lib/jenkins/workspace/demo-project
+The recommended git tool is: NONE
+No credentials specified
+ > git rev-parse --resolve-git-dir /var/lib/jenkins/workspace/demo-project/.git # timeout=10
+Fetching changes from the remote Git repository
+ > git config remote.origin.url https://github.com/prannoy10/Project-8-Jenkins_Ansible_Project.git # timeout=10
+Fetching upstream changes from https://github.com/prannoy10/Project-8-Jenkins_Ansible_Project.git
+ > git --version # timeout=10
+ > git --version # 'git version 2.39.2'
+ > git fetch --tags --force --progress -- https://github.com/prannoy10/Project-8-Jenkins_Ansible_Project.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+ > git rev-parse refs/remotes/origin/master^{commit} # timeout=10
+Checking out Revision 883f7aa09a5deb82b97afd885c1d359c07710ab7 (refs/remotes/origin/master)
+ > git config core.sparsecheckout # timeout=10
+ > git checkout -f 883f7aa09a5deb82b97afd885c1d359c07710ab7 # timeout=10
+Commit message: "Delete README.md"
+ > git rev-list --no-walk 883f7aa09a5deb82b97afd885c1d359c07710ab7 # timeout=10
+SSH: Connecting from host [ip-172-31-38-139.ap-south-1.compute.internal]
+SSH: Connecting with configuration [jenkins] ...
+SSH: EXEC: completed after 400 ms
+SSH: Disconnecting configuration [jenkins] ...
+SSH: Transferred 0 file(s)
+Build step 'Send files or execute commands over SSH' changed build result to SUCCESS
+SSH: Connecting from host [ip-172-31-38-139.ap-south-1.compute.internal]
+SSH: Connecting with configuration [Ansible] ...
+SSH: EXEC: completed after 3,804 ms
+SSH: Disconnecting configuration [Ansible] ...
+SSH: Transferred 0 file(s)
+Finished: SUCCESS
+
+Now verify whether index.html file is present in /var/www/html/ in webserver node.
+
+[root@ip-172-31-32-176 html]# ssh 3.110.102.90
+The authenticity of host '3.110.102.90 (3.110.102.90)' can't be established.
+ECDSA key fingerprint is SHA256:Vht+rLD9ClNGdLUYTz+6gnQsg0aTiZ4MBqf0clWAXbc.
+ECDSA key fingerprint is MD5:70:7a:f5:bb:ac:7e:91:14:fe:b9:3d:13:31:71:ed:0e.
+Are you sure you want to continue connecting (yes/no)? yes
+Warning: Permanently added '3.110.102.90' (ECDSA) to the list of known hosts.
+Last login: Wed Apr 26 22:29:16 2023 from ip-172-31-32-176.ap-south-1.compute.internal
+
+       __|  __|_  )
+       _|  (     /   Amazon Linux 2 AMI
+      ___|\___|___|
+
+https://aws.amazon.com/amazon-linux-2/
+[root@ip-172-31-34-82 ~]#
+
+[root@ip-172-31-32-176 html]# ssh 3.110.102.90
+The authenticity of host '3.110.102.90 (3.110.102.90)' can't be established.
+ECDSA key fingerprint is SHA256:Vht+rLD9ClNGdLUYTz+6gnQsg0aTiZ4MBqf0clWAXbc.
+ECDSA key fingerprint is MD5:70:7a:f5:bb:ac:7e:91:14:fe:b9:3d:13:31:71:ed:0e.
+Are you sure you want to continue connecting (yes/no)? yes
+Warning: Permanently added '3.110.102.90' (ECDSA) to the list of known hosts.
+Last login: Wed Apr 26 22:29:16 2023 from ip-172-31-32-176.ap-south-1.compute.internal
+
+       __|  __|_  )
+       _|  (     /   Amazon Linux 2 AMI
+      ___|\___|___|
+
+https://aws.amazon.com/amazon-linux-2/
+[root@ip-172-31-34-82 ~]# ^C
+[root@ip-172-31-34-82 ~]# cd /var/www/html
+[root@ip-172-31-34-82 html]# ls
+index.html
+
+[root@ip-172-31-34-82 html]# date
+Wed Apr 26 22:35:48 UTC 2023
+
+[root@ip-172-31-34-82 html]# ls -lrth
+total 4.0K
+-rw-r--r-- 1 root root 17 Apr 26 22:29 index.html
+[root@ip-172-31-34-82 html]#
+
+
+The file is now present. Now check and verify the url the http://3.110.102.90 
+
+
+----------------------------------
+
+Now switch to developer node.
+
+
+Install git and clone the directory
+
+[root@ip-172-31-37-7 ~]# yum install git -y
+
+[root@ip-172-31-37-7 ~]# git clone https://github.com/prannoy10/Project-8-Jenkins_Ansible_Project.git
+Cloning into 'Project-8-Jenkins_Ansible_Project'...
+remote: Enumerating objects: 8, done.
+remote: Counting objects: 100% (8/8), done.
+remote: Compressing objects: 100% (4/4), done.
+remote: Total 8 (delta 0), reused 0 (delta 0), pack-reused 0
+Receiving objects: 100% (8/8), done.
+[root@ip-172-31-37-7 ~]#
+[root@ip-172-31-37-7 ~]# ls
+Project-8-Jenkins_Ansible_Project
+[root@ip-172-31-37-7 ~]# cd Project-8-Jenkins_Ansible_Project/
+
+
+[root@ip-172-31-37-7 Project-8-Jenkins_Ansible_Project]# ls
+index.html
+[root@ip-172-31-37-7 Project-8-Jenkins_Ansible_Project]#
+
+
+[root@ip-172-31-37-7 Project-8-Jenkins_Ansible_Project]# git log
+commit 883f7aa09a5deb82b97afd885c1d359c07710ab7 (HEAD -> main, origin/main, origin/HEAD)
+Author: prannoy10 <100775003+prannoy10@users.noreply.github.com>
+Date:   Thu Apr 27 02:46:46 2023 +0530
+
+    Delete README.md
+
+commit 0405044a9bea91c748ffe0c669d49083746d05f0
+Author: prannoy10 <100775003+prannoy10@users.noreply.github.com>
+Date:   Wed Apr 26 04:53:52 2023 +0530
+
+    Create index.html
+
+commit 4dac1b2b8e3bf4a6fd10997ba88e1053941b7a31
+Author: prannoy10 <100775003+prannoy10@users.noreply.github.com>
+Date:   Wed Apr 26 04:52:21 2023 +0530
+
+    Initial commit
+[root@ip-172-31-37-7 Project-8-Jenkins_Ansible_Project]#
+
+
+
+Now edit the source code, commit and push this to the Repo. 
+[root@ip-172-31-37-7 Project-8-Jenkins_Ansible_Project]# cat index.html
+Welcome! This is a demo Jenkins CI/CD Project involving Ansible, Git and web-server.
+[root@ip-172-31-37-7 Project-8-Jenkins_Ansible_Project]#
+[root@ip-172-31-37-7 Project-8-Jenkins_Ansible_Project]# git add index.html
+[root@ip-172-31-37-7 Project-8-Jenkins_Ansible_Project]#
+
+
+[root@ip-172-31-37-7 Project-8-Jenkins_Ansible_Project]# git commit -m "f1" index.html
+[main 9e1fbe4] f1
+ Committer: root <root@ip-172-31-37-7.ap-south-1.compute.internal>
+Your name and email address were configured automatically based
+on your username and hostname. Please check that they are accurate.
+You can suppress this message by setting them explicitly. Run the
+following command and follow the instructions in your editor to edit
+your configuration file:
+
+    git config --global --edit
+
+After doing this, you may fix the identity used for this commit with:
+
+    git commit --amend --reset-author
+
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+[root@ip-172-31-37-7 Project-8-Jenkins_Ansible_Project]#
+
+
+
+
+Now push this to the Github repo. Ensure that GitHub hook trigger for GITScm polling is enabled in Job.
+
+
+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
+
+[root@ip-172-31-37-7 Project-8-Jenkins_Ansible_Project]# git push origin main
+Username for 'https://github.com': prannoy10
+Password for 'https://prannoy10@github.com':
+Enumerating objects: 5, done.
+Counting objects: 100% (5/5), done.
+Compressing objects: 100% (2/2), done.
+Writing objects: 100% (3/3), 331 bytes | 331.00 KiB/s, done.
+Total 3 (delta 0), reused 0 (delta 0), pack-reused 0
+To https://github.com/prannoy10/Project-8-Jenkins_Ansible_Project.git
+   883f7aa..9e1fbe4  main -> main
+[root@ip-172-31-37-7 Project-8-Jenkins_Ansible_Project]#
+
+
+After pushing to Github repo, Job will start running again.
+
+Now the webserver url will show new content http://3.110.102.90/
+
+[root@ip-172-31-34-82 ~]# cd /var/www/html
+[root@ip-172-31-34-82 html]# ls
+index.html
+[root@ip-172-31-34-82 html]# ll
+total 4
+-rw-r--r-- 1 root root 85 Apr 26 23:22 index.html
+[root@ip-172-31-34-82 html]# date
+Wed Apr 26 23:24:25 UTC 2023
+
+[root@ip-172-31-34-82 html]# cat index.html
+Welcome! This is a demo Jenkins CI/CD Project involving Ansible, Git and web-server.

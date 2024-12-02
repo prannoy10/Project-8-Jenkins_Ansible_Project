@@ -1,13 +1,40 @@
 **Project Summary**
 
-We need to integrate Github with jenkins, jenkins-server with Ansible-server and ansible-server with web-server. 
+Project Overview:
 
-**1**. Then developer will write source code and commit and then push to github.
+This project aims to automate the CI/CD pipeline by integrating GitHub, Jenkins, Ansible, and a web server. The process is designed to allow developers to push their code to GitHub, triggering automated build and deployment processes.
 
-**2**. When pushed to Github, Jenkins will start the job-compiling and building and jenkins will transfer the output file to ansible server. 
+Project Flow:
 
-**3**. When ansible server receives file, jenkins will trigger playbook mentioned in ansible server. Playbook mentions to deploy the software on web server. 
+1. Developer Code Commit:
 
-**4**. In future, any changes done by developer and pushed to Github, job will start running again and new version of software will be deployed.
+The developer writes the source code and commits it to the GitHub repository.
 
-We need 4 ec2 instance for 4 servers, Github server is provided by github, so we need to create for ansible, jenkins, web server, developer ie 4 ec2 instances.
+2. Jenkins Job Trigger:
+
+Once the code is pushed to GitHub, Jenkins automatically triggers a job to compile and build the application.
+
+The compiled output is then transferred from Jenkins to the Ansible server.
+
+3. Deployment via Ansible:
+
+Upon receiving the output file, the Ansible server executes a predefined playbook triggered by Jenkins.
+
+The playbook deploys the application to the web server.
+
+4. Continuous Deployment:
+
+In the future, whenever the developer makes changes and pushes the code to GitHub, the entire pipeline will be triggered again, ensuring the latest version of the software is deployed to the web server.
+
+
+Infrastructure Requirements:
+
+The system will require four EC2 instances:
+
+1. GitHub: The repository is hosted on GitHub.
+
+2. Jenkins: For CI/CD job execution.
+
+3. Ansible Server: To manage deployment through playbooks.
+
+4. Web Server: Where the application will be deployed.
